@@ -1,0 +1,238 @@
+
+
+<link rel = "stylesheet" href = "https://maxcdn.bootstrapcdn.com/bootstrap/4.0.0/css/bootstrap.min.css" integrity = "sha384-Gn5384xqQ1aoWXA+058RXPxPg6fy4IWvTNh0E263XmFcJlSAwiGgFAW/dAiS6JXm" crossorigin = "anonymous">
+<link rel = "stylesheet" href = "https://fonts.googleapis.com/css?family=Manjari">
+<script src = "https://code.jquery.com/jquery-3.2.1.min.js"></script>
+<script src = "https://cdnjs.cloudflare.com/ajax/libs/popper.js/1.12.9/umd/popper.min.js" integrity = "sha384-ApNbgh9B+Y1QKtv3Rn7W3mgPxhU9K/ScQsAP7hUibX39j7fakFPskvXusvfa0b4Q" crossorigin = "anonymous"></script>
+<script src = "https://maxcdn.bootstrapcdn.com/bootstrap/4.0.0/js/bootstrap.min.js" integrity = "sha384-JZR6Spejh4U02d8jOt6vLEHfe/JQGiRRSQQxSfFWpi1MquVdAyjUar5+76PVCmYl" crossorigin = "anonymous"></script>
+
+<style>
+    div#audio_player_container {
+        font-family: Manjari;
+        max-width: 800px;
+        width: 80%;
+        margin: 5% auto;
+    }
+
+    div#audio_player_container img { cursor: pointer;}
+
+    div#audio_player_container #title {
+        margin: 0 auto;
+        width: 40%;
+        position: relative;
+        top: 7px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        text-align: center;
+    }
+
+    div#tracks a {
+        background: rgba(191, 236, 246, 0.75);
+        color: #222;
+        border-top: 1px solid #2224;
+        transition: background 30ms;
+    }
+    div#tracks a:first-child {
+        border-top: none;
+    }
+
+    div#tracks a:hover {
+        background: rgba(191, 236, 246, 0.9);
+    }
+
+    div#tracks a:active {
+        background: rgba(191, 236, 246, 0.6);
+    }
+</style>
+
+<div id = "audio_player_container" class = "container-fluid">
+    <div style = "background: #eeee; border-radius: 5px; margin-bottom: 2rem;">
+        <audio src = ""></audio>
+
+        <div id = "audio_player_progress" class = "progress" style = "cursor: pointer; background: inherit; padding: 0; border-radius: 2px; height: 25px; border-bottom: 1px solid lightgrey;">
+            <div id = "audio_player_progress_bar" class = "progress-bar progress-bar-striped progress-bar-animated" role = "progressbar"
+                        style = "width: 100%; transition: none;" aria-valuemin = "0" aria-valuemax = "1000"></div>
+        </div>
+
+        <div class = "row" style = "margin: 0;">
+            <img src = "img/prev.svg" width = "32" style = "margin-left: 10px;" onclick = "previous()">
+            <img src = "img/play.svg" width = "32" id = "play_pause" onclick = "toggle_play(this)">
+            <img src = "img/next.svg" width = "32" onclick = "next()">
+
+            <div id = "title"></div>
+
+            <div class = "">
+                <span style = "position: relative; top: 1.7px;">
+                    <span id = "current_time" style = "width: 4em; text-align: right; display: inline-block;">0:00</span>/<span id = "duration">0:00</span>
+                </span>
+                <img id = "vol_svg" src = "img/vol_high.svg" width = "32">
+                <input style = "position: relative; top: 4px; margin-right: 10px;" id = "vol_slider" type = "range" value = "100" min = "0" max = "100" step = "1" oninput = "set_volume(this.value)" onchange = "set_volume(this.value)"></input>
+            </div>
+        </div>
+    </div>
+
+    <div class = "list-group" id = "tracks" style = "max-height: 500px; overflow-y: scroll; border-radius: 5px;"></div>
+</div>
+
+<script>
+    let is_mouse_down_on_progress_bar = false
+    let img_dir = 'img/'
+    let vol_svg = [
+        img_dir + 'vol_mute.svg',
+        img_dir + 'vol_low.svg',
+        img_dir + 'vol_high.svg'
+    ]
+
+    let play_pause_svg = [
+        img_dir + 'play.svg',
+        img_dir + 'pause.svg'
+    ]
+
+    $(document).ready(function() {
+        init_tracks()
+        window.audio = document.querySelector('div#audio_player_container  audio')
+        init_event_handlers()
+    })
+
+    function init_event_handlers() {
+        $('img#vol_svg').on('click', function() {
+            audio.muted = !audio.muted
+            let svg = (audio.muted) ? vol_svg[0] : ((audio.volume - 0.5 < 0) ? vol_svg[1] : vol_svg[2])
+            $('img#vol_svg').attr('src', svg)
+            let is_disabled = ($('input#vol_slider').attr('disabled') === undefined) ? true : false
+            $('input#vol_slider').prop('disabled', is_disabled)
+        })
+
+        $(audio).on('ended', next)
+
+        $(audio).on('loadeddata', function() {
+            $('div#audio_player_container #duration').text(parse_audio_time(audio.duration))
+            $('div#audio_player_container div#audio_player_progress_bar').removeClass('progress-bar-striped', 'progress-bar-animated')
+            let title = tracks[track_index].split('.')[0]
+            $('div#audio_player_container div#title').text(title)
+            $('div#audio_player_container div#audio_player_progress_bar').css({
+                transition: 'width 0.5s',
+                'transition-timing-function': 'start',
+                width: '0%'
+            })
+            setTimeout(() => $('div#audio_player_container div#audio_player_progress_bar').css('transition', 'none'), 1000)
+        })
+
+        $('div#audio_player_container div#audio_player_progress').on('mousedown', function() {
+            is_mouse_down_on_progress_bar = true
+        })
+
+        $('div#audio_player_container div#audio_player_progress').on('click', function(evt) {
+            $('div#audio_player_container div#audio_player_progress_bar').css('transition', 'width 0.1s')
+            set_progress(evt)
+            setTimeout(() => $('div#audio_player_container div#audio_player_progress_bar').css('transition', 'none'), 100)
+        })
+
+        $(document).on('mouseup', function() {
+            is_mouse_down_on_progress_bar = false
+        })
+
+        $(document).on('mousemove', function(evt) {
+            if (is_mouse_down_on_progress_bar)
+                set_progress(evt)
+        })
+    }
+
+    let music_dir = 'music/'
+    let tracks = []
+    let track_index = 0
+    function init_tracks() {
+        $.get({
+            url: music_dir
+        }).done(data => {
+            data = $($.parseHTML(data)).siblings('table').children('tbody').find('a')
+            for (let i = 0; i < data.length; i++) {
+                if (data[i].innerHTML.match(/.+\..+/g)) {
+                    tracks.push(data[i].innerText)
+                    $('div#tracks').append('<a href="#" class="list-group-item">' + data[i].innerText + '</a>')
+                    //$('div.container').append('<a href="' + music_dir + data[i].innerText + '">' + data[i].innerText + '</a>')
+                }
+            }
+            $(audio).attr('src', encodeURI(music_dir + tracks[track_index]))
+
+            // this has to be separate from the other even handlers because it has to
+            // be set after the <a> are added to div#tracks
+            $('div#tracks > a').on('click', function(evt) {
+                evt.preventDefault()
+                let was_paused = audio.paused
+                //let src = encodeURI(music_dir + this.innerText)
+                track_index = $(this).index()-1
+                let src = encodeURI(music_dir + tracks[++track_index])
+                $(audio).attr('src', src)
+                if (was_paused) {
+                    toggle_play($('img#play_pause')[0])
+                } else {
+                    audio.play()
+                }
+            })
+        })
+    }
+
+    function toggle_play(obj) {
+        $(obj).attr('src') == play_pause_svg[0] ? window.duration_interval = setInterval(update_current_time, 50) : clearInterval(window.duration_interval)
+        $(obj).attr('src') == play_pause_svg[0] ? audio.play() : audio.pause()
+        let svg = ($(obj).attr('src') == play_pause_svg[0]) ? play_pause_svg[1] : play_pause_svg[0]
+        obj.src = svg
+    }
+
+    function previous() {
+        if (audio.currentTime > 3) {
+            audio.currentTime = 0
+            return
+        }
+
+        track_index -= 2
+        $(audio).attr('src', encodeURI(music_dir + tracks[++track_index]))
+        audio.play()
+    }
+
+    function next() {
+        let looped = false
+        if (track_index == tracks.length-1) {
+            track_index = 0
+            looped = true
+        }
+
+        $(audio).attr('src', encodeURI(music_dir + tracks[++track_index]))
+        looped ? audio.pause() : audio.play()
+    }
+
+    function set_volume(val) {
+        audio.volume = val / 100.0
+
+        let svg = (audio.volume - 0.5 < 0) ? vol_svg[1] : vol_svg[2]
+        svg = (audio.volume == 0) ? vol_svg[0] : svg
+
+        $('img#vol_svg').attr('src', svg)
+    }
+
+    function parse_audio_time(sec) {
+        let m = Math.floor(sec / 60)
+        let s = (Math.floor(sec % 60) + '')
+        s = (s.length > 1) ? s : '0' + s
+        let dur = m + ':' + s
+        return dur
+    }
+
+    function set_progress(evt) {
+        let $dur = $('div#audio_player_container div#audio_player_progress')
+        let $cur = $('div#audio_player_container div#audio_player_progress_bar')
+        let dur_width = parseInt($dur.css('width'))
+        let cur_width = (parseInt($cur.css('width')) / 100) * dur_width
+        let offset = $dur.offset().left
+        let new_cur_width = evt.pageX - offset
+        audio.currentTime = new_cur_width / dur_width * audio.duration
+        update_current_time()
+    }
+
+    function update_current_time() {
+        $('div#audio_player_progress_bar').css('width', (audio.currentTime / audio.duration * 100) + '%')
+        $('div#audio_player_container #current_time').text(parse_audio_time(audio.currentTime))
+    }
+</script>
